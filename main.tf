@@ -2,42 +2,42 @@ provider "aws"{
   region = "eu-west-1"
 }
 resource "aws_vpc" "kirts_vpc" {
-  cidr_block = "10.120.0.0/16"
+  cidr_block = "10.11.0.0/16"
   enable_dns_hostnames = true
   tags = {
-    Name = "kirts_vpc"
+    Name = "${var.name}-vpc"
   }
 }
 resource "aws_subnet" "public-subnet" {
-  vpc_id = "${aws_vpc.kirts_vpc.id}"
+  vpc_id = "${var.vpc_id}"
   cidr_block = "10.120.122.0/24"
   availability_zone = "eu-west-1a"
   tags = {
-    Name = "kirts_public_subnet"
+    Name = "${var.name}-public-subnet"
   }
 }
 resource "aws_subnet" "private-subnet" {
-  vpc_id = "${aws_vpc.kirts_vpc.id}"
+  vpc_id = "${var.vpc_id}"
   cidr_block = "10.120.123.0/24"
   availability_zone = "eu-west-1b"
   tags = {
-    Name = "kirts_private_subnet"
+    Name = "${var.name}-private-subnet"
   }
 }
-resource "aws_internet_gateway" "kmgw" {
-  vpc_id = "${aws_vpc.kirts_vpc.id}"
+resource "aws_internet_gateway" "internet_gateway" {
+  vpc_id = "${var.vpc_id}"
   tags = {
-    Name = "kirts_gateway"
+    Name = "${var.name}-internet-gateway"
   }
 }
 resource "aws_route_table" "web-public-rt" {
-  vpc_id = "${aws_vpc.kirts_vpc.id}"
+  vpc_id = "${var.vpc_id}"
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = "${aws_internet_gateway.kmgw.id}"
+    gateway_id = "${aws_internet_gateway.internet_gateway.id}"
   }
   tags = {
-    Name = "public_subnet_rt"
+    Name = "${var.name}-public-route-table"
   }
 }
 resource "aws_route_table_association" "web-public-rt" {
@@ -45,13 +45,13 @@ resource "aws_route_table_association" "web-public-rt" {
   route_table_id = "${aws_route_table.web-public-rt.id}"
 }
 resource "aws_route_table" "web-private-rt" {
-  vpc_id = "${aws_vpc.kirts_vpc.id}"
+  vpc_id = "${var.vpc_id}"
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = "${aws_internet_gateway.kmgw.id}"
+    gateway_id = "${aws_internet_gateway.internet_gateway.id}"
   }
   tags = {
-    Name = "private_subnet_rt"
+    Name = "${var.name}-private-route-table"
   }
 }
 resource "aws_route_table_association" "web-private-rt" {
@@ -81,7 +81,7 @@ resource "aws_security_group" "sg_web_public" {
   }
   vpc_id = "${aws_vpc.kirts_vpc.id}"
   tags = {
-    Name = "sg_web_public"
+    Name = "${var.name}-security-group-public"
   }
 }
 resource "aws_security_group" "sg_web_private" {
@@ -93,31 +93,31 @@ resource "aws_security_group" "sg_web_private" {
     protocol = "tcp"
     cidr_blocks =  ["212.161.55.68/32"]
   }
-  vpc_id = "${aws_vpc.kirts_vpc.id}"
+  vpc_id = "${var.vpc_id}"
   tags = {
-    Name = "sg_web_private"
+    Name = "${var.name}-security-group-private"
   }
 }
 resource "aws_instance" "app_instance_public"{
-  ami = "ami-0b45d039456f24807"
+  ami = "${var.app_ami_id}"
   instance_type = "t2.micro"
   associate_public_ip_address = true
   key_name = "${aws_key_pair.kirtpair.id}"
   subnet_id = "${aws_subnet.public-subnet.id}"
   vpc_security_group_ids = ["${aws_security_group.sg_web_public.id}"]
   tags = {
-    Name = "kirts_public_app"
+    Name = "${var.name}-public-app"
   }
 }
 resource "aws_instance" "app_instance_private"{
-  ami = "ami-0b45d039456f24807"
+  ami = "${var.app_ami_id}"
   instance_type = "t2.micro"
   associate_public_ip_address = true
   key_name = "${aws_key_pair.kirtpair.id}"
   subnet_id = "${aws_subnet.private-subnet.id}"
   vpc_security_group_ids = ["${aws_security_group.sg_web_private.id}"]
   tags = {
-    Name = "kirts_private_app"
+    Name = "${var.name}-private-app"
   }
 }
 resource "aws_key_pair" "kirtpair" {
