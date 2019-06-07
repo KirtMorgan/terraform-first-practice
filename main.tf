@@ -2,7 +2,7 @@ provider "aws"{
   region = "eu-west-1"
 }
 resource "aws_vpc" "kirts_vpc" {
-  cidr_block = "10.11.0.0/16"
+  cidr_block = "10.120.0.0/16"
   enable_dns_hostnames = true
   tags = {
     Name = "${var.name}-vpc"
@@ -78,6 +78,12 @@ resource "aws_security_group" "sg_web_public" {
     to_port = 22
     protocol = "tcp"
     cidr_blocks =  ["212.161.55.68/32"]
+  }
+  ingress {
+    from_port = 0
+    to_port = 0
+    protocol = -1
+    cidr_blocks = ["0.0.0.0/0"]
   }
   vpc_id = "${aws_vpc.kirts_vpc.id}"
   tags = {
