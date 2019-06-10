@@ -5,5 +5,14 @@ variable "name" {
 default ="kirts"
 }
 variable "app_ami_id" {
-default ="ami-0b45d039456f24807"
+default ="ami-074844b6a187fa712"
+}
+variable "db_ami_id" {
+default ="ami-09dc8417351e5cc57"
+}
+variable "app_run" {
+default ="init.sh.tpl"
+}
+variable "db_run" {
+default ="mongo_init.sh.tpl"
 }

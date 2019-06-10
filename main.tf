@@ -9,7 +9,7 @@ resource "aws_vpc" "kirts_vpc" {
   }
 }
 resource "aws_subnet" "public-subnet" {
-  vpc_id = "${var.vpc_id}"
+  vpc_id = "${aws_vpc.kirts_vpc.id}"
   cidr_block = "10.120.122.0/24"
   availability_zone = "eu-west-1a"
   tags = {
@@ -17,7 +17,7 @@ resource "aws_subnet" "public-subnet" {
   }
 }
 resource "aws_subnet" "private-subnet" {
-  vpc_id = "${var.vpc_id}"
+  vpc_id = "${aws_vpc.kirts_vpc.id}"
   cidr_block = "10.120.123.0/24"
   availability_zone = "eu-west-1b"
   tags = {
@@ -25,13 +25,13 @@ resource "aws_subnet" "private-subnet" {
   }
 }
 resource "aws_internet_gateway" "internet_gateway" {
-  vpc_id = "${var.vpc_id}"
+  vpc_id = "${aws_vpc.kirts_vpc.id}"
   tags = {
     Name = "${var.name}-internet-gateway"
   }
 }
 resource "aws_route_table" "web-public-rt" {
-  vpc_id = "${var.vpc_id}"
+  vpc_id = "${aws_vpc.kirts_vpc.id}"
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = "${aws_internet_gateway.internet_gateway.id}"
@@ -45,7 +45,7 @@ resource "aws_route_table_association" "web-public-rt" {
   route_table_id = "${aws_route_table.web-public-rt.id}"
 }
 resource "aws_route_table" "web-private-rt" {
-  vpc_id = "${var.vpc_id}"
+  vpc_id = "${aws_vpc.kirts_vpc.id}"
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = "${aws_internet_gateway.internet_gateway.id}"
@@ -94,12 +94,18 @@ resource "aws_security_group" "sg_web_private" {
   name = "vpc_kirtpri_web"
   description = "Allow incoming HTTP connections & SSH access"
   ingress {
+    from_port = 27017
+    to_port = 27017
+    protocol = "tcp"
+    cidr_blocks =  ["10.120.122.0/24"]
+  }
+  ingress {
     from_port = 22
     to_port = 22
     protocol = "tcp"
     cidr_blocks =  ["212.161.55.68/32"]
   }
-  vpc_id = "${var.vpc_id}"
+  vpc_id = "${aws_vpc.kirts_vpc.id}"
   tags = {
     Name = "${var.name}-security-group-private"
   }
@@ -111,17 +117,19 @@ resource "aws_instance" "app_instance_public"{
   key_name = "${aws_key_pair.kirtpair.id}"
   subnet_id = "${aws_subnet.public-subnet.id}"
   vpc_security_group_ids = ["${aws_security_group.sg_web_public.id}"]
+  user_data = "${data.template_file.public_app_init.rendered}"
   tags = {
     Name = "${var.name}-public-app"
   }
 }
 resource "aws_instance" "app_instance_private"{
-  ami = "${var.app_ami_id}"
+  ami = "${var.db_ami_id}"
   instance_type = "t2.micro"
   associate_public_ip_address = true
   key_name = "${aws_key_pair.kirtpair.id}"
   subnet_id = "${aws_subnet.private-subnet.id}"
   vpc_security_group_ids = ["${aws_security_group.sg_web_private.id}"]
+  user_data = "${data.template_file.private_app_init.rendered}"
   tags = {
     Name = "${var.name}-private-app"
   }
@@ -129,4 +137,68 @@ resource "aws_instance" "app_instance_private"{
 resource "aws_key_pair" "kirtpair" {
   key_name = "terraformkirt"
   public_key = "${file("~/.ssh/id_rsa.pub")}"
+}
+data "template_file" "public_app_init"{
+  template = "${file("./scripts/app/${var.app_run}")}"
+}
+data "template_file" "private_app_init"{
+  template = "${file("./scripts/app/${var.db_run}")}"
+}
+
+# Create a new load balancer
+resource "aws_elb" "load_balancer" {
+  name               = "public-terraform-elb"
+  subnets = ["${aws_subnet.public-subnet.id}"]
+
+  listener {
+    instance_port     = 8000
+    instance_protocol = "http"
+    lb_port           = 80
+    lb_protocol       = "http"
+  }
+
+  health_check {
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 20
+    target              = "HTTP:8000/"
+    interval            = 30
+  }
+
+  instances                   = ["${aws_instance.app_instance_public.id}"]
+  cross_zone_load_balancing   = true
+  idle_timeout                = 400
+  connection_draining         = true
+  connection_draining_timeout = 400
+
+  tags = {
+    Name = "public-terraform-elb"
+  }
+}
+
+resource "aws_launch_configuration" "team1" {
+  name = "team1-launch-config"
+  image_id = "${var.db_ami_id}"
+  instance_type = "t2.micro"
+  ebs_optimized = false
+  security_groups = ["${aws_security_group.sg_web_public.id}"]
+
+}
+
+resource "aws_autoscaling_group" "autoscaling_group" {
+  name                      = "team1_autoscaling_group"
+  max_size                  = 3
+  min_size                  = 1
+  health_check_grace_period = 300
+  health_check_type         = "EC2"
+  desired_capacity          = 2
+  force_delete              = true
+  launch_configuration      = "${aws_launch_configuration.team1.name}"
+  vpc_zone_identifier       = ["${aws_subnet.public-subnet.id}"]
+  load_balancers = ["${aws_elb.load_balancer.id}"]
+  tags = [{
+  key = "Name"
+  value = "Team1_AutoScaling_Instance"
+  propagate_at_launch = true
+  }]
 }
