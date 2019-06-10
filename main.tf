@@ -146,8 +146,8 @@ data "template_file" "private_app_init"{
 }
 
 # Create a new load balancer
-resource "aws_elb" "load_balancer" {
-  name               = "public-terraform-elb"
+resource "aws_elb" "public_load_balancer" {
+  name               = "${var.name}-public-terraform-elb"
   subnets = ["${aws_subnet.public-subnet.id}"]
 
   listener {
@@ -172,33 +172,90 @@ resource "aws_elb" "load_balancer" {
   connection_draining_timeout = 400
 
   tags = {
-    Name = "public-terraform-elb"
+    Name = "${var.name}-public-terraform-elb"
   }
 }
 
-resource "aws_launch_configuration" "team1" {
-  name = "team1-launch-config"
-  image_id = "${var.db_ami_id}"
+resource "aws_launch_configuration" "team1_public" {
+  name = "${var.name}-launch-config-public"
+  image_id = "${var.app_ami_id}"
   instance_type = "t2.micro"
   ebs_optimized = false
   security_groups = ["${aws_security_group.sg_web_public.id}"]
 
 }
 
-resource "aws_autoscaling_group" "autoscaling_group" {
-  name                      = "team1_autoscaling_group"
-  max_size                  = 3
+resource "aws_autoscaling_group" "autoscaling_group_public" {
+  name                      = "${var.name}_autoscaling_group_public"
+  max_size                  = 2
   min_size                  = 1
   health_check_grace_period = 300
   health_check_type         = "EC2"
   desired_capacity          = 2
   force_delete              = true
-  launch_configuration      = "${aws_launch_configuration.team1.name}"
+  launch_configuration      = "${aws_launch_configuration.team1_public.name}"
   vpc_zone_identifier       = ["${aws_subnet.public-subnet.id}"]
-  load_balancers = ["${aws_elb.load_balancer.id}"]
+  load_balancers = ["${aws_elb.public_load_balancer.id}"]
   tags = [{
   key = "Name"
-  value = "Team1_AutoScaling_Instance"
+  value = "${var.name}_AutoScaling_Instance_Public"
+  propagate_at_launch = true
+  }]
+}
+
+resource "aws_elb" "load_balancer_private" {
+  name               = "${var.name}-private-terraform-elb"
+  subnets = ["${aws_subnet.public-subnet.id}"]
+
+  listener {
+    instance_port     = 8000
+    instance_protocol = "http"
+    lb_port           = 80
+    lb_protocol       = "http"
+  }
+
+  health_check {
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 20
+    target              = "HTTP:8000/"
+    interval            = 30
+  }
+
+  instances                   = ["${aws_instance.app_instance_private.id}"]
+  cross_zone_load_balancing   = true
+  idle_timeout                = 400
+  connection_draining         = true
+  connection_draining_timeout = 400
+
+  tags = {
+    Name = "${var.name}-private-terraform-elb"
+  }
+}
+
+resource "aws_launch_configuration" "team1_private" {
+  name = "${var.name}-launch-config-private"
+  image_id = "${var.db_ami_id}"
+  instance_type = "t2.micro"
+  ebs_optimized = false
+  security_groups = ["${aws_security_group.sg_web_private.id}"]
+
+}
+
+resource "aws_autoscaling_group" "autoscaling_group_private" {
+  name                      = "${var.name}_autoscaling_group_private"
+  max_size                  = 2
+  min_size                  = 1
+  health_check_grace_period = 300
+  health_check_type         = "EC2"
+  desired_capacity          = 1
+  force_delete              = true
+  launch_configuration      = "${aws_launch_configuration.team1_private.name}"
+  vpc_zone_identifier       = ["${aws_subnet.private-subnet.id}"]
+  load_balancers = ["${aws_elb.load_balancer_private.id}"]
+  tags = [{
+  key = "Name"
+  value = "${var.name}_AutoScaling_Instance_Private"
   propagate_at_launch = true
   }]
 }
