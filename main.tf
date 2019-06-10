@@ -182,6 +182,8 @@ resource "aws_launch_configuration" "team1_public" {
   instance_type = "t2.micro"
   ebs_optimized = false
   security_groups = ["${aws_security_group.sg_web_public.id}"]
+  user_data = "${data.template_file.public_app_init.rendered}"
+  associate_public_ip_address = true
 
 }
 
